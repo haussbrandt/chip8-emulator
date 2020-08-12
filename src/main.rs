@@ -2,7 +2,6 @@ use rand;
 use std::fs;
 
 struct CPU {
-    current_opcode: u16,
     memory: [u8; 4096],
     v: [u8; 16],
     i: u16,  // Index register
@@ -12,7 +11,7 @@ struct CPU {
     sound_timer: u8,
     stack: [u16; 16],
     sp: u16, // Stack pointer
-    key: [u8; 16],
+    key: [bool; 16],
     draw_flag: bool,
 }
 
@@ -44,7 +43,6 @@ impl CPU {
         }
 
         CPU {
-            current_opcode: 0,
             memory,
             v: [0; 16],
             i: 0,
@@ -54,7 +52,7 @@ impl CPU {
             sound_timer: 0,
             stack: [0; 16],
             sp: 0,
-            key: [0; 16],
+            key: [false; 16],
             draw_flag: false,
         }
     }
@@ -200,14 +198,56 @@ impl CPU {
                 self.v[x] = rand::random::<u8>() & (opcode & 0x00FF) as u8;
                 self.pc += 2;
             } // Set VX to result of rand() & NN
-            0xD000 => {}                                              // Draw
-            0xE000 => {}                                              // Skip if key
+            0xD000 => {
+                let pos_x = self.v[x];
+                let pos_y = self.v[y];
+                let height = opcode & 0x000F;
+
+                for y_line in 0..height {
+                    let pixels = self.memory[(self.i + y_line) as usize];
+
+                    for x_line in 0..8 {
+                        if pixels & (0x80 >> x_line) != 0 {
+                            if self.graphics
+                                [(pos_x + x_line + ((pos_y + y_line as u8) * 64)) as usize]
+                                == 1
+                            {
+                                self.v[0xF] = 1;
+                            }
+                            self.graphics
+                                [(pos_x + x_line + ((pos_y + y_line as u8) * 64)) as usize] ^= 1
+                        }
+                    }
+                }
+
+                self.draw_flag = true;
+                self.pc += 2;
+            } // Draw
+            0xE000 => match opcode & 0x00FF {
+                0x9E => {
+                    if self.key[self.v[x] as usize] {
+                        self.pc += 4;
+                    } else {
+                        self.pc += 2;
+                    }
+                } // Skip if key in VX is pressed
+                0xA1 => {
+                    if !self.key[self.v[x] as usize] {
+                        self.pc += 4;
+                    } else {
+                        self.pc += 2;
+                    }
+                } // Skip if key in VX is not pressed
+                x => println!("Unknown opcode: {}", x),
+            },
             0xF000 => match opcode & 0x00FF {
                 0x07 => {
                     self.v[x] = self.delay_timer;
                     self.pc += 2;
                 } // Set VX to delay timer
-                0x0A => {} // Wait for press key, store in VX
+                0x0A => {
+                    self.v[x] = wait_for_key();
+                } // Wait for press key, store in VX
                 0x15 => {
                     self.delay_timer = self.v[x];
                     self.pc += 2;
@@ -274,3 +314,7 @@ fn main() {
 fn setup_graphics() {}
 
 fn setup_input() {}
+
+fn wait_for_key() -> u8 {
+    1
+}
