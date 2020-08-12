@@ -1,3 +1,7 @@
+use ggez;
+use ggez::event::{self, KeyCode};
+use ggez::graphics;
+use ggez::input;
 use rand;
 use std::fs;
 
@@ -57,6 +61,58 @@ impl CPU {
         }
     }
 
+    fn set_keys(&mut self, ctx: &mut ggez::Context) {
+        self.key = [false; 16];
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key1) {
+            self.key[0x1] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key2) {
+            self.key[0x2] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key3) {
+            self.key[0x3] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key4) {
+            self.key[0xC] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Q) {
+            self.key[0x4] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::W) {
+            self.key[0x5] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::E) {
+            self.key[0x6] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::R) {
+            self.key[0xD] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::A) {
+            self.key[0x7] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::S) {
+            self.key[0x8] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::D) {
+            self.key[0x9] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::F) {
+            self.key[0xE] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Z) {
+            self.key[0xA] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::X) {
+            self.key[0x0] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::C) {
+            self.key[0xB] = true;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::V) {
+            self.key[0xF] = true;
+        }
+    }
+
     fn load_game(&mut self, filename: &str) {
         let game = fs::read(filename).unwrap();
         for (i, v) in game.iter().enumerate() {
@@ -64,13 +120,12 @@ impl CPU {
         }
     }
 
-    fn emulate_cycle(&mut self) {
+    fn emulate_cycle(&mut self, ctx: &mut ggez::Context) {
         let opcode =
             (self.memory[self.pc as usize] as u16) << 8 | self.memory[self.pc as usize + 1] as u16;
-
-        let x = (opcode & 0x0F00) as usize;
-        let y = (opcode & 0x00F0) as usize;
-
+        let x = ((opcode & 0x0F00) >> 8) as usize;
+        let y = ((opcode & 0x00F0) >> 4) as usize;
+        // println!("opcode: {:#04x}, pc: {:#04x}", opcode, self.pc);
         match opcode & 0xF000 {
             0x0000 => match opcode & 0x000F {
                 0x0000 => {
@@ -82,7 +137,7 @@ impl CPU {
                     self.pc = self.stack[self.sp as usize];
                     self.pc += 2;
                 } // Return from subroutine
-                x => println!("Unknown opcode: {}", x),
+                _ => println!("Unknown opcode: {:#04x}", opcode),
             },
             0x1000 => {
                 self.pc = opcode & 0x0FFF;
@@ -119,7 +174,8 @@ impl CPU {
             } // Set VX to NN
             0x7000 => {
                 if x != 0xF {
-                    self.v[x] += (opcode & 0x00FF) as u8;
+                    let result = self.v[x].overflowing_add((opcode & 0x00FF) as u8);
+                    self.v[x] = result.0;
                 }
                 self.pc += 2;
             } // Add NN to VX (carry flag not changed)
@@ -180,7 +236,7 @@ impl CPU {
                     self.v[x] <<= 1;
                     self.pc += 2;
                 } // Store MSB of VX in VF. Shift VX to left by 1.
-                x => println!("Unknown opcode: {}", x),
+                _ => println!("Unknown opcode: {:#04x}", opcode),
             },
             0x9000 => {
                 if self.v[x] != self.v[y] {
@@ -208,14 +264,16 @@ impl CPU {
 
                     for x_line in 0..8 {
                         if pixels & (0x80 >> x_line) != 0 {
-                            if self.graphics
-                                [(pos_x + x_line + ((pos_y + y_line as u8) * 64)) as usize]
+                            if self.graphics[((pos_x + x_line) as usize
+                                + ((pos_y as usize + y_line as usize) * 64))
+                                as usize]
                                 == 1
                             {
                                 self.v[0xF] = 1;
                             }
-                            self.graphics
-                                [(pos_x + x_line + ((pos_y + y_line as u8) * 64)) as usize] ^= 1
+                            self.graphics[((pos_x + x_line) as usize
+                                + ((pos_y as usize + y_line as usize) * 64))
+                                as usize] ^= 1
                         }
                     }
                 }
@@ -238,7 +296,7 @@ impl CPU {
                         self.pc += 2;
                     }
                 } // Skip if key in VX is not pressed
-                x => println!("Unknown opcode: {}", x),
+                _ => println!("Unknown opcode: {:#04x}", opcode),
             },
             0xF000 => match opcode & 0x00FF {
                 0x07 => {
@@ -246,7 +304,7 @@ impl CPU {
                     self.pc += 2;
                 } // Set VX to delay timer
                 0x0A => {
-                    self.v[x] = wait_for_key();
+                    self.v[x] = wait_for_key(ctx);
                 } // Wait for press key, store in VX
                 0x15 => {
                     self.delay_timer = self.v[x];
@@ -281,40 +339,99 @@ impl CPU {
                     }
                     self.pc += 2;
                 } // Fill V0 to VX (inclusive) with values from memory starting at address I
-                x => println!("Unknown opcode: {}", x),
+                _ => println!("Unknown opcode: {:#04x}", opcode),
             },
-            x => println!("Unknown opcode: {}", x),
+            _ => println!("Unknown opcode: {:#04x}", opcode),
         }
     }
 }
 
-fn main() {
-    let mut chip = CPU::new();
+impl event::EventHandler for CPU {
+    fn update(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
+        self.emulate_cycle(ctx);
+        self.set_keys(ctx);
+        Ok(())
+    }
 
-    setup_graphics();
-    setup_input();
-
-    chip.load_game("rockto.ch8");
-
-    // for i in 45..66 {
-    //     println!("{:#02x?}", &chip.memory[i * 32..i * 32 + 32]);
-    // }
-
-    // loop {
-    chip.emulate_cycle();
-
-    //     if chip.draw_flag {
-    //         draw_graphics();
-    //     }
-
-    //     chip.set_keys();
-    // }
+    fn draw(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
+        if self.draw_flag {
+            graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
+            let mut mesh = graphics::MeshBuilder::new();
+            for (idx, &pixel) in self.graphics.iter().enumerate() {
+                if pixel != 0 {
+                    let r = graphics::Rect::new(idx as f32 % 64.0, idx as f32 / 64.0, 20.0, 20.0);
+                    mesh.rectangle(graphics::DrawMode::fill(), r, [0.9, 0.9, 0.9, 1.0].into());
+                }
+            }
+            self.draw_flag = false;
+            let mesh = mesh.build(ctx)?;
+            graphics::draw(ctx, &mesh, graphics::DrawParam::new())?;
+            graphics::present(ctx)?;
+        }
+        
+        
+        Ok(())
+    }
 }
 
-fn setup_graphics() {}
+fn main() -> ggez::GameResult {
+    let cb = ggez::ContextBuilder::new("chip8", "haussbrandt");
+    let (ctx, event_loop) = &mut cb.build()?;
+    let state = &mut CPU::new();
+    state.load_game("RPS.ch8");
+    event::run(ctx, event_loop, state)
+}
 
-fn setup_input() {}
-
-fn wait_for_key() -> u8 {
-    1
+fn wait_for_key(ctx: &mut ggez::Context) -> u8 {
+    loop {
+        // println!("{:?}", input::keyboard::pressed_keys(ctx));
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key1) {
+            return 0x1;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key2) {
+            return 0x2;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key3) {
+            return 0x3;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Key4) {
+            return 0xC;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Q) {
+            return 0x4;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::W) {
+            return 0x5;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::E) {
+            return 0x6;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::R) {
+            return 0xD;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::A) {
+            return 0x7;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::S) {
+            return 0x8;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::D) {
+            return 0x9;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::F) {
+            return 0xE;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::Z) {
+            return 0xA;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::X) {
+            return 0x0;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::C) {
+            return 0xB;
+        }
+        if input::keyboard::is_key_pressed(ctx, KeyCode::V) {
+            return 0xF;
+        }
+    }
 }
