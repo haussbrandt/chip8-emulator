@@ -1,5 +1,5 @@
-use std::fs;
 use rand;
+use std::fs;
 
 struct CPU {
     current_opcode: u16,
@@ -78,70 +78,70 @@ impl CPU {
                 0x0000 => {
                     self.graphics = [0; 64 * 32];
                     self.pc += 2;
-                }, // Clear the screen
+                } // Clear the screen
                 0x000E => {
                     self.sp -= 1;
                     self.pc = self.stack[self.sp as usize];
                     self.pc += 2;
-                }, // Return from subroutine
+                } // Return from subroutine
                 x => println!("Unknown opcode: {}", x),
             },
             0x1000 => {
                 self.pc = opcode & 0x0FFF;
-            }, // Jump to address NNN
+            } // Jump to address NNN
             0x2000 => {
                 self.stack[self.sp as usize] = self.pc;
                 self.sp += 1;
                 self.pc = opcode & 0x0FFF;
-            }, // Call subroutine at NNN
+            } // Call subroutine at NNN
             0x3000 => {
                 if self.v[x] == (opcode & 0x00FF) as u8 {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
                 }
-            }, // Skip if VX equal to NN
+            } // Skip if VX equal to NN
             0x4000 => {
                 if self.v[x] != (opcode & 0x00FF) as u8 {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
                 }
-            }, // Skip if VX not equal to NN
+            } // Skip if VX not equal to NN
             0x5000 => {
                 if self.v[x] == self.v[y] {
                     self.pc += 4;
                 } else {
                     self.pc += 2;
                 }
-            }, // Skip if VX equal to VY
+            } // Skip if VX equal to VY
             0x6000 => {
                 self.v[x] = (opcode & 0x00FF) as u8;
                 self.pc += 2;
-            }, // Set VX to NN
+            } // Set VX to NN
             0x7000 => {
                 if x != 0xF {
                     self.v[x] += (opcode & 0x00FF) as u8;
                 }
                 self.pc += 2;
-            }, // Add NN to VX (carry flag not changed)
+            } // Add NN to VX (carry flag not changed)
             0x8000 => match opcode & 0x000F {
                 0x0 => {
                     self.v[x] = self.v[y];
                     self.pc += 2;
-                }, // Set VX to VY
+                } // Set VX to VY
                 0x1 => {
                     self.v[x] |= self.v[y];
                     self.pc += 2;
-                }, // Set VX to VX or VY
+                } // Set VX to VX or VY
                 0x2 => {
                     self.v[x] &= self.v[y];
                     self.pc += 2;
-                }, // Set VX to VX and VY
+                } // Set VX to VX and VY
                 0x3 => {
                     self.v[x] ^= self.v[y];
                     self.pc += 2;
-                }, // Set VX to VX xor VY
+                } // Set VX to VX xor VY
                 0x4 => {
                     let result = self.v[x].overflowing_add(self.v[y]);
                     self.v[x] = result.0;
@@ -151,7 +151,7 @@ impl CPU {
                         self.v[0xF] = 0;
                     }
                     self.pc += 2;
-                }, // Add VY to VX. Set VF to 1 if carry, 0 if not.
+                } // Add VY to VX. Set VF to 1 if carry, 0 if not.
                 0x5 => {
                     let result = self.v[x].overflowing_sub(self.v[y]);
                     self.v[x] = result.0;
@@ -161,12 +161,12 @@ impl CPU {
                         self.v[0xF] = 1;
                     }
                     self.pc += 2;
-                }, // Subtract VY from VX. Set VF to 0 if borrow, 1 if not.
+                } // Subtract VY from VX. Set VF to 0 if borrow, 1 if not.
                 0x6 => {
                     self.v[0xF] = self.v[x] & 0x1;
                     self.v[x] >>= 1;
                     self.pc += 2;
-                }, // Store LSB of VX in VF. Shift VX to right by 1.
+                } // Store LSB of VX in VF. Shift VX to right by 1.
                 0x7 => {
                     let result = self.v[y].overflowing_sub(self.v[x]);
                     self.v[x] = result.0;
@@ -176,12 +176,12 @@ impl CPU {
                         self.v[0xF] = 1;
                     }
                     self.pc += 2;
-                }, // Set VX to VY - VX. Set VF to 0 if borrow, 1 if not.
+                } // Set VX to VY - VX. Set VF to 0 if borrow, 1 if not.
                 0xE => {
                     self.v[0xF] = self.v[x] & 0x80;
                     self.v[x] <<= 1;
                     self.pc += 2;
-                }, // Store MSB of VX in VF. Shift VX to left by 1.
+                } // Store MSB of VX in VF. Shift VX to left by 1.
                 x => println!("Unknown opcode: {}", x),
             },
             0x9000 => {
@@ -190,52 +190,57 @@ impl CPU {
                 } else {
                     self.pc += 2;
                 }
-            }, // Skip if VX not equal to VY
+            } // Skip if VX not equal to VY
             0xA000 => {
                 self.i = opcode & 0xFFF;
                 self.pc += 2;
-            }, // Set I to address NNN
+            } // Set I to address NNN
             0xB000 => self.pc = (opcode & 0x0FFF) + self.v[0] as u16, // Jump to address NNN + V0
             0xC000 => {
                 self.v[x] = rand::random::<u8>() & (opcode & 0x00FF) as u8;
                 self.pc += 2;
-            }, // Set VX to result of rand() & NN
-            0xD000 => {}, // Draw
-            0xE000 => {}, // Skip if key
-            0xF000 =>  match opcode & 0x00FF {
+            } // Set VX to result of rand() & NN
+            0xD000 => {}                                              // Draw
+            0xE000 => {}                                              // Skip if key
+            0xF000 => match opcode & 0x00FF {
                 0x07 => {
                     self.v[x] = self.delay_timer;
                     self.pc += 2;
-                }, // Set VX to delay timer
-                0x0A => {
-
-                }, // Wait for press key, store in VX
+                } // Set VX to delay timer
+                0x0A => {} // Wait for press key, store in VX
                 0x15 => {
                     self.delay_timer = self.v[x];
                     self.pc += 2;
-                }, // Set delay timer to VX
+                } // Set delay timer to VX
                 0x18 => {
                     self.sound_timer = self.v[x];
                     self.pc += 2;
-                }, // Set sound timer to VX
+                } // Set sound timer to VX
                 0x1E => {
                     if x != 0xF {
                         self.i += self.v[x] as u16;
                     }
                     self.pc += 2;
-                }, // Add VX to I if X is not F
-                0x29 => {
-
-                }, // Set I to the location of the sprite for the character in VX.
+                } // Add VX to I if X is not F
+                0x29 => {} // Set I to the location of the sprite for the character in VX.
                 0x33 => {
-
-                }, // Store BCD representation of VX at the address in I
+                    self.memory[self.i as usize] = self.v[x] / 100;
+                    self.memory[self.i as usize + 1] = (self.v[x] / 10) % 10;
+                    self.memory[self.i as usize + 2] = (self.v[x] % 100) % 10;
+                    self.pc += 2;
+                } // Store BCD representation of VX at the address in I
                 0x55 => {
-
-                }, // Store V0 to VX (inclusive) in memory starting at address I
+                    for j in 0..=x {
+                        self.memory[self.i as usize + j] = self.v[j];
+                    }
+                    self.pc += 2;
+                } // Store V0 to VX (inclusive) in memory starting at address I
                 0x65 => {
-
-                }, // Fill V0 to VX (inclusive) with values from memory starting at address I
+                    for j in 0..=x {
+                        self.v[j] = self.memory[self.i as usize + j];
+                    }
+                    self.pc += 2;
+                } // Fill V0 to VX (inclusive) with values from memory starting at address I
                 x => println!("Unknown opcode: {}", x),
             },
             x => println!("Unknown opcode: {}", x),
