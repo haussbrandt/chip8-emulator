@@ -3,8 +3,7 @@ use ggez::event::{self, KeyCode};
 use ggez::graphics;
 use ggez::input;
 use rand;
-use std;
-use std::fs;
+use std::{self, fs, env};
 
 struct CPU {
     memory: [u8; 4096],
@@ -307,7 +306,6 @@ impl CPU {
                 0x0A => {
                     for key in self.key.iter().enumerate() {
                         if *key.1 {
-                            println!("{:#01x}", key.0);
                             self.v[x] = key.0 as u8;
                             self.pc += 2;
                             break;
@@ -406,6 +404,8 @@ fn main() -> ggez::GameResult {
     let cb = ggez::ContextBuilder::new("chip8", "haussbrandt");
     let (ctx, event_loop) = &mut cb.build()?;
     let state = &mut CPU::new();
-    state.load_game("RPS.ch8");
+    let args: Vec<String> = env::args().collect();
+    let filename = &args[1];
+    state.load_game(filename);
     event::run(ctx, event_loop, state)
 }
