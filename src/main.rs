@@ -4,6 +4,8 @@ use ggez::graphics;
 use ggez::input;
 use rand;
 use std::fs;
+use std;
+
 
 struct CPU {
     memory: [u8; 4096],
@@ -120,7 +122,7 @@ impl CPU {
         }
     }
 
-    fn emulate_cycle(&mut self, ctx: &mut ggez::Context) {
+    fn emulate_cycle(&mut self) {
         let opcode =
             (self.memory[self.pc as usize] as u16) << 8 | self.memory[self.pc as usize + 1] as u16;
         let x = ((opcode & 0x0F00) >> 8) as usize;
@@ -304,7 +306,14 @@ impl CPU {
                     self.pc += 2;
                 } // Set VX to delay timer
                 0x0A => {
-                    self.v[x] = wait_for_key(ctx);
+                    for key in self.key.iter().enumerate() {
+                        if *key.1 {
+                            self.v[x] = key.0 as u8;
+                            self.pc += 2;
+                            break;
+                        }
+                    }
+                    
                 } // Wait for press key, store in VX
                 0x15 => {
                     self.delay_timer = self.v[x];
@@ -348,7 +357,7 @@ impl CPU {
 
 impl event::EventHandler for CPU {
     fn update(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
-        self.emulate_cycle(ctx);
+        self.emulate_cycle();
         self.set_keys(ctx);
         Ok(())
     }
@@ -356,10 +365,13 @@ impl event::EventHandler for CPU {
     fn draw(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
         if self.draw_flag {
             graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
+            let size = graphics::drawable_size(ctx);
+            let pixel_width = size.0 / 64.0;
+            let pixel_height = size.1 / 32.0;
             let mut mesh = graphics::MeshBuilder::new();
             for (idx, &pixel) in self.graphics.iter().enumerate() {
                 if pixel != 0 {
-                    let r = graphics::Rect::new(idx as f32 % 64.0, idx as f32 / 64.0, 20.0, 20.0);
+                    let r = graphics::Rect::new((idx as f32 % 64.0) * pixel_width, (idx as f32 / 64.0) * pixel_height, pixel_width, pixel_height);
                     mesh.rectangle(graphics::DrawMode::fill(), r, [0.9, 0.9, 0.9, 1.0].into());
                 }
             }
@@ -368,8 +380,7 @@ impl event::EventHandler for CPU {
             graphics::draw(ctx, &mesh, graphics::DrawParam::new())?;
             graphics::present(ctx)?;
         }
-        
-        
+
         Ok(())
     }
 }
@@ -380,58 +391,4 @@ fn main() -> ggez::GameResult {
     let state = &mut CPU::new();
     state.load_game("RPS.ch8");
     event::run(ctx, event_loop, state)
-}
-
-fn wait_for_key(ctx: &mut ggez::Context) -> u8 {
-    loop {
-        // println!("{:?}", input::keyboard::pressed_keys(ctx));
-        if input::keyboard::is_key_pressed(ctx, KeyCode::Key1) {
-            return 0x1;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::Key2) {
-            return 0x2;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::Key3) {
-            return 0x3;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::Key4) {
-            return 0xC;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::Q) {
-            return 0x4;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::W) {
-            return 0x5;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::E) {
-            return 0x6;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::R) {
-            return 0xD;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::A) {
-            return 0x7;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::S) {
-            return 0x8;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::D) {
-            return 0x9;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::F) {
-            return 0xE;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::Z) {
-            return 0xA;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::X) {
-            return 0x0;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::C) {
-            return 0xB;
-        }
-        if input::keyboard::is_key_pressed(ctx, KeyCode::V) {
-            return 0xF;
-        }
-    }
 }
