@@ -3,9 +3,8 @@ use ggez::event::{self, KeyCode};
 use ggez::graphics;
 use ggez::input;
 use rand;
-use std::fs;
 use std;
-
+use std::fs;
 
 struct CPU {
     memory: [u8; 4096],
@@ -308,12 +307,12 @@ impl CPU {
                 0x0A => {
                     for key in self.key.iter().enumerate() {
                         if *key.1 {
+                            println!("{:#01x}", key.0);
                             self.v[x] = key.0 as u8;
                             self.pc += 2;
                             break;
                         }
                     }
-                    
                 } // Wait for press key, store in VX
                 0x15 => {
                     self.delay_timer = self.v[x];
@@ -329,7 +328,10 @@ impl CPU {
                     }
                     self.pc += 2;
                 } // Add VX to I if X is not F
-                0x29 => {} // Set I to the location of the sprite for the character in VX.
+                0x29 => {
+                    self.i = self.v[x] as u16 * 5;
+                    self.pc += 2;
+                } // Set I to the location of the sprite for the character in VX.
                 0x33 => {
                     self.memory[self.i as usize] = self.v[x] / 100;
                     self.memory[self.i as usize + 1] = (self.v[x] / 10) % 10;
@@ -352,6 +354,16 @@ impl CPU {
             },
             _ => println!("Unknown opcode: {:#04x}", opcode),
         }
+
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1;
+        };
+        if self.sound_timer > 0 {
+            if self.sound_timer == 1 {
+                println!("Make sound");
+            }
+            self.sound_timer -= 1;
+        }
     }
 }
 
@@ -371,7 +383,12 @@ impl event::EventHandler for CPU {
             let mut mesh = graphics::MeshBuilder::new();
             for (idx, &pixel) in self.graphics.iter().enumerate() {
                 if pixel != 0 {
-                    let r = graphics::Rect::new((idx as f32 % 64.0) * pixel_width, (idx as f32 / 64.0) * pixel_height, pixel_width, pixel_height);
+                    let r = graphics::Rect::new(
+                        (idx as f32 % 64.0) * pixel_width,
+                        (idx as f32 / 64.0) * pixel_height,
+                        pixel_width,
+                        pixel_height,
+                    );
                     mesh.rectangle(graphics::DrawMode::fill(), r, [0.9, 0.9, 0.9, 1.0].into());
                 }
             }
@@ -380,7 +397,7 @@ impl event::EventHandler for CPU {
             graphics::draw(ctx, &mesh, graphics::DrawParam::new())?;
             graphics::present(ctx)?;
         }
-
+        std::thread::sleep(std::time::Duration::from_micros(300));
         Ok(())
     }
 }
