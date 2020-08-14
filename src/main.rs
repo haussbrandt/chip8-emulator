@@ -3,7 +3,7 @@ use ggez::event::{self, KeyCode};
 use ggez::graphics;
 use ggez::input;
 use rand;
-use std::{self, fs, env};
+use std::{self, env, fs};
 
 struct CPU {
     memory: [u8; 4096],
@@ -379,17 +379,19 @@ impl event::EventHandler for CPU {
             let pixel_width = size.0 / 64.0;
             let pixel_height = size.1 / 32.0;
             let mut mesh = graphics::MeshBuilder::new();
+
             for (idx, &pixel) in self.graphics.iter().enumerate() {
                 if pixel != 0 {
                     let r = graphics::Rect::new(
                         (idx as f32 % 64.0) * pixel_width,
-                        (idx as f32 / 64.0) * pixel_height,
+                        (idx / 64) as f32 * pixel_height,
                         pixel_width,
                         pixel_height,
                     );
                     mesh.rectangle(graphics::DrawMode::fill(), r, [0.9, 0.9, 0.9, 1.0].into());
                 }
             }
+
             self.draw_flag = false;
             let mesh = mesh.build(ctx)?;
             graphics::draw(ctx, &mesh, graphics::DrawParam::new())?;
@@ -401,8 +403,22 @@ impl event::EventHandler for CPU {
 }
 
 fn main() -> ggez::GameResult {
-    let cb = ggez::ContextBuilder::new("chip8", "haussbrandt");
+    let wm = ggez::conf::WindowMode {
+        width: 640.0,
+        height: 320.0,
+        maximized: false,
+        fullscreen_type: ggez::conf::FullscreenType::Windowed,
+        borderless: false,
+        min_width: 0.0,
+        max_width: 0.0,
+        min_height: 0.0,
+        max_height: 0.0,
+        resizable: true,
+    };
+
+    let cb = ggez::ContextBuilder::new("chip8", "haussbrandt").window_mode(wm);
     let (ctx, event_loop) = &mut cb.build()?;
+
     let state = &mut CPU::new();
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
