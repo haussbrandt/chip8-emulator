@@ -10,13 +10,15 @@ struct CPU {
     v: [u8; 16],
     i: u16,  // Index register
     pc: u16, // Program counter
-    graphics: [u8; 64 * 32],
+    graphics: [u8; 64 * 128],
     delay_timer: u8,
     sound_timer: u8,
     stack: [u16; 16],
     sp: u16, // Stack pointer
     key: [bool; 16],
     draw_flag: bool,
+    rpl_user_flags: [u8; 8],
+    is_extended: bool,
 }
 
 impl CPU {
@@ -38,11 +40,22 @@ impl CPU {
             0xE0, 0x90, 0x90, 0x90, 0xE0, // D
             0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
             0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+
+            0x3C, 0x7E, 0xE7, 0xC3, 0xC3, 0xC3, 0xC3, 0xE7, 0x7E, 0x3C, // 0
+            0x18, 0x38, 0x58, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, // 1
+            0x3E, 0x7F, 0xC3, 0x06, 0x0C, 0x18, 0x30, 0x60, 0xFF, 0xFF, // 2
+            0x3C, 0x7E, 0xC3, 0x03, 0x0E, 0x0E, 0x03, 0xC3, 0x7E, 0x3C, // 3
+            0x06, 0x0E, 0x1E, 0x36, 0x66, 0xC6, 0xFF, 0xFF, 0x06, 0x06, // 4
+            0xFF, 0xFF, 0xC0, 0xC0, 0xFC, 0xFE, 0x03, 0xC3, 0x7E, 0x3C, // 5
+            0x3E, 0x7C, 0xC0, 0xC0, 0xFC, 0xFE, 0xC3, 0xC3, 0x7E, 0x3C, // 6
+            0xFF, 0xFF, 0x03, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x60, 0x60, // 7
+            0x3C, 0x7E, 0xC3, 0xC3, 0x7E, 0x7E, 0xC3, 0xC3, 0x7E, 0x3C, // 8
+            0x3C, 0x7E, 0xC3, 0xC3, 0x7F, 0x3F, 0x03, 0x03, 0x3E, 0x7C, // 9
         ];
 
         let mut memory = [0; 4096];
 
-        for i in 0..80 {
+        for i in 0..180 {
             memory[i] = chip8_fontset[i];
         }
 
@@ -51,13 +64,15 @@ impl CPU {
             v: [0; 16],
             i: 0,
             pc: 0x200,
-            graphics: [0; 64 * 32],
+            graphics: [0; 64 * 128],
             delay_timer: 0,
             sound_timer: 0,
             stack: [0; 16],
             sp: 0,
             key: [false; 16],
             draw_flag: false,
+            rpl_user_flags: [0; 8],
+            is_extended: false,
         }
     }
 
@@ -120,23 +135,43 @@ impl CPU {
         }
     }
 
-    fn emulate_cycle(&mut self) {
+    fn emulate_cycle(&mut self, ctx: &mut ggez::Context) {
         let opcode =
             (self.memory[self.pc as usize] as u16) << 8 | self.memory[self.pc as usize + 1] as u16;
         let x = ((opcode & 0x0F00) >> 8) as usize;
         let y = ((opcode & 0x00F0) >> 4) as usize;
         // println!("opcode: {:#04x}, pc: {:#04x}", opcode, self.pc);
         match opcode & 0xF000 {
-            0x0000 => match opcode & 0x000F {
-                0x0000 => {
-                    self.graphics = [0; 64 * 32];
+            0x0000 => match opcode & 0x00FF {
+                0x00E0 => {
+                    self.graphics = [0; 64 * 128];
                     self.pc += 2;
                 } // Clear the screen
-                0x000E => {
+                0x00EE => {
                     self.sp -= 1;
                     self.pc = self.stack[self.sp as usize];
                     self.pc += 2;
                 } // Return from subroutine
+                0x00FB => {
+                    
+                    self.pc += 2;
+                } // Scroll right
+                0x00FC => {
+                    
+                    self.pc += 2;
+                } // Scroll left
+                0x00FD => {
+                    ggez::event::quit(ctx);
+                    self.pc += 2;
+                } // Exit interpreter
+                0x00FE => {
+                    self.is_extended = false;
+                    self.pc += 2;
+                } // Disable extended mode
+                0x00FF => {
+                    self.is_extended = true;
+                    self.pc += 2;
+                } // Enable extended mode
                 _ => println!("Unknown opcode: {:#04x}", opcode),
             },
             0x1000 => {
@@ -329,7 +364,11 @@ impl CPU {
                 0x29 => {
                     self.i = self.v[x] as u16 * 5;
                     self.pc += 2;
-                } // Set I to the location of the sprite for the character in VX.
+                } // Set I to the location of the sprite for the 5-byte character in VX.
+                0x30 => {
+                    self.i = self.v[x] as u16 * 10 + 80;
+                    self.pc += 2;
+                } // Set I to the location of the sprite for the 10-byte character in VX.
                 0x33 => {
                     self.memory[self.i as usize] = self.v[x] / 100;
                     self.memory[self.i as usize + 1] = (self.v[x] / 10) % 10;
@@ -348,6 +387,18 @@ impl CPU {
                     }
                     self.pc += 2;
                 } // Fill V0 to VX (inclusive) with values from memory starting at address I
+                0x75 => {
+                    for j in 0..=x {
+                        self.rpl_user_flags[j] = self.v[j];
+                    }
+                    self.pc += 2;
+                } // Store V0 to VX (inclusive) in RPL user flags
+                0x85 => {
+                    for j in 0..=x {
+                        self.v[j] = self.rpl_user_flags[j];
+                    }
+                    self.pc += 2;
+                } // Read V0 to VX (inclusive) from RPL user flags
                 _ => println!("Unknown opcode: {:#04x}", opcode),
             },
             _ => println!("Unknown opcode: {:#04x}", opcode),
@@ -367,7 +418,7 @@ impl CPU {
 
 impl event::EventHandler for CPU {
     fn update(&mut self, ctx: &mut ggez::Context) -> ggez::GameResult {
-        self.emulate_cycle();
+        self.emulate_cycle(ctx);
         self.set_keys(ctx);
         Ok(())
     }
