@@ -40,7 +40,6 @@ impl CPU {
             0xE0, 0x90, 0x90, 0x90, 0xE0, // D
             0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
             0xF0, 0x80, 0xF0, 0x80, 0x80, // F
-
             0x3C, 0x7E, 0xE7, 0xC3, 0xC3, 0xC3, 0xC3, 0xE7, 0x7E, 0x3C, // 0
             0x18, 0x38, 0x58, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, // 1
             0x3E, 0x7F, 0xC3, 0x06, 0x0C, 0x18, 0x30, 0x60, 0xFF, 0xFF, // 2
@@ -153,11 +152,25 @@ impl CPU {
                     self.pc += 2;
                 } // Return from subroutine
                 0x00FB => {
-                    
+                    for y_line in 0..64 {
+                        for x_line in (0..124).rev() {
+                            self.graphics[x_line + y_line * 128] = self.graphics[x_line - 4 + y_line * 128];
+                        }
+                        for x_line in 0..4 {
+                            self.graphics[x_line + y_line * 128] = 0;
+                        }
+                    }
                     self.pc += 2;
                 } // Scroll right
                 0x00FC => {
-                    
+                    for y_line in 0..64 {
+                        for x_line in 0..124 {
+                            self.graphics[x_line + y_line * 128] = self.graphics[x_line + 4 + y_line * 128];
+                        }
+                        for x_line in 124..128 {
+                            self.graphics[x_line + y_line * 128] = 0;
+                        }
+                    }
                     self.pc += 2;
                 } // Scroll left
                 0x00FD => {
@@ -172,7 +185,21 @@ impl CPU {
                     self.is_extended = true;
                     self.pc += 2;
                 } // Enable extended mode
-                _ => println!("Unknown opcode: {:#04x}", opcode),
+                _ => match opcode & 0x00F0 {
+                    0x00C0 => {
+                        let n = opcode & 0x000F;
+                        for x_line in 0..128 {
+                            for y_line in (n..64).rev() {
+                                self.graphics[(x_line + y_line * 128) as usize] = self.graphics[(x_line + (y_line - n) * 128) as usize];
+                            }
+                            for y_line in 0..n {
+                                self.graphics[(x_line + y_line * 128) as usize] = 0;
+                            }
+                        }
+                        self.pc += 2;
+                    } // Scroll display N lines down
+                    _ => println!("Unknown opcode: {:#04x}", opcode),
+                }
             },
             0x1000 => {
                 self.pc = opcode & 0x0FFF;
@@ -294,21 +321,51 @@ impl CPU {
                 let pos_y = self.v[y];
                 let height = opcode & 0x000F;
 
-                for y_line in 0..height {
-                    let pixels = self.memory[(self.i + y_line) as usize];
-
-                    for x_line in 0..8 {
-                        if pixels & (0x80 >> x_line) != 0 {
-                            if self.graphics[((pos_x + x_line) as usize
-                                + ((pos_y as usize + y_line as usize) * 64))
-                                as usize]
-                                == 1
-                            {
-                                self.v[0xF] = 1;
+                if (height == 0) & self.is_extended {
+                    for y_line in 0..16 {
+                        let pixels: u16 = ((self.memory[(self.i + y_line) as usize] as u16) << 8)
+                            | (self.memory[(self.i + y_line) as usize] as u16);
+                        for x_line in 0..16 {
+                            if (pixels & (0x8000 >> x_line)) != 0 {
+                                if ((pos_x as u16 + x_line as u16) < 128)
+                                    & ((pos_y as u16 + y_line as u16) < 64)
+                                {
+                                    if self.graphics[((pos_x + x_line) as usize
+                                        + ((pos_y as usize + y_line as usize) * 128))
+                                        as usize]
+                                        == 1
+                                    {
+                                        self.v[0xF] = 1;
+                                    }
+                                    self.graphics[((pos_x + x_line) as usize
+                                        + ((pos_y as usize + y_line as usize) * 128))
+                                        as usize] ^= 1
+                                }
                             }
-                            self.graphics[((pos_x + x_line) as usize
-                                + ((pos_y as usize + y_line as usize) * 64))
-                                as usize] ^= 1
+                        }
+                    }
+                } else {
+                    for y_line in 0..height {
+                        let pixels = self.memory[(self.i + y_line) as usize];
+                        for x_line in 0..8 {
+                            if (pixels & (0x80 >> x_line)) != 0 {
+                                if ((pos_x as u16 + x_line as u16)
+                                    < (64 * (1 + self.is_extended as u16)))
+                                    & ((pos_y as u16 + y_line)
+                                        < (128 * (1 + self.is_extended as u16)))
+                                {
+                                    if self.graphics[((pos_x + x_line) as usize
+                                        + ((pos_y as usize + y_line as usize) * 128))
+                                        as usize]
+                                        == 1
+                                    {
+                                        self.v[0xF] = 1;
+                                    }
+                                    self.graphics[((pos_x + x_line) as usize
+                                        + ((pos_y as usize + y_line as usize) * 128))
+                                        as usize] ^= 1
+                                }
+                            }
                         }
                     }
                 }
@@ -427,15 +484,15 @@ impl event::EventHandler for CPU {
         if self.draw_flag {
             graphics::clear(ctx, [0.1, 0.2, 0.3, 1.0].into());
             let size = graphics::drawable_size(ctx);
-            let pixel_width = size.0 / 64.0;
-            let pixel_height = size.1 / 32.0;
+            let pixel_width = size.0 / 128.0;
+            let pixel_height = size.1 / 64.0;
             let mut mesh = graphics::MeshBuilder::new();
 
             for (idx, &pixel) in self.graphics.iter().enumerate() {
                 if pixel != 0 {
                     let r = graphics::Rect::new(
-                        (idx as f32 % 64.0) * pixel_width,
-                        (idx / 64) as f32 * pixel_height,
+                        (idx as f32 % 128.0) * pixel_width,
+                        (idx / 128) as f32 * pixel_height,
                         pixel_width,
                         pixel_height,
                     );
